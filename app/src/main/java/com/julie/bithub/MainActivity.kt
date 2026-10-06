@@ -88,6 +88,14 @@ class MainActivity : Activity() {
         @JavascriptInterface fun versao(): Int = packageManager.getPackageInfo(packageName, 0).let { if (android.os.Build.VERSION.SDK_INT >= 28) it.longVersionCode.toInt() else @Suppress("DEPRECATION") it.versionCode }
         @JavascriptInterface fun recarregar() { mao.post { web.loadUrl(endereco) } }
         @JavascriptInterface fun instalar(url: String) { mao.post { baixarEInstalar(url) } }
+        // abre um link num app do tablet (ex.: música no YT Music); sem o app, abre no navegador
+        @JavascriptInterface fun abrir(url: String, pacote: String) {
+            mao.post {
+                val i = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                try { startActivity(if (pacote.isNotEmpty()) android.content.Intent(i).setPackage(pacote) else i) }
+                catch (e: android.content.ActivityNotFoundException) { try { startActivity(i) } catch (_: Exception) {} }
+            }
+        }
     }
 
     // atualizar pelo próprio app: baixa o APK novo do GitHub e abre o instalador do Android
