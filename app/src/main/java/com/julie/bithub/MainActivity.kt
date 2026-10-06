@@ -29,7 +29,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        manterAcesa()
         web = WebView(this)
         web.setBackgroundColor(Color.parseColor("#0b0c10"))
         setContentView(web)
@@ -94,7 +94,16 @@ class MainActivity : Activity() {
     }
 
     override fun onWindowFocusChanged(foco: Boolean) { super.onWindowFocusChanged(foco); if (foco) telaCheia() }
-    override fun onResume() { super.onResume(); web.onResume() }
+    override fun onResume() { super.onResume(); manterAcesa(); web.onResume() }
+
+    // tela sempre acesa com o app aberto: não apaga, não escurece e aparece por cima da tela de bloqueio
+    @Suppress("DEPRECATION")
+    private fun manterAcesa() {
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+            or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD)
+        if (android.os.Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(true); setTurnScreenOn(true) }
+        if (::web.isInitialized) web.keepScreenOn = true
+    }
     override fun onPause() { web.onPause(); super.onPause() }
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() { if (web.canGoBack()) web.goBack() }
