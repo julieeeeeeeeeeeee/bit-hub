@@ -99,29 +99,46 @@ class MainActivity : Activity() {
     }
 
     // atualizar pelo próprio app: baixa o APK novo do GitHub e abre o instalador do Android
+    private var apkPendente: String? = null
     private fun baixarEInstalar(url: String) {
         if (android.os.Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
-            // primeira vez: o Android pede pra liberar "instalar apps desta fonte"
+            // primeira vez: o Android pede pra liberar "instalar apps desta fonte"; ao voltar pro app, continua sozinho
+            apkPendente = url
             startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, android.net.Uri.parse("package:$packageName")))
             return
         }
+        apkPendente = null
         val dm = getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager
         java.io.File(getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), "bit-hub.apk").delete()
         val id = dm.enqueue(android.app.DownloadManager.Request(android.net.Uri.parse(url))
             .setTitle("BIT · atualização")
             .setMimeType("application/vnd.android.package-archive")
             .setDestinationInExternalFilesDir(this, android.os.Environment.DIRECTORY_DOWNLOADS, "bit-hub.apk"))
-        val receptor = object : android.content.BroadcastReceiver() {
-            override fun onReceive(c: android.content.Context, i: android.content.Intent) {
-                if (i.getLongExtra(android.app.DownloadManager.EXTRA_DOWNLOAD_ID, -1) != id) return
-                unregisterReceiver(this)
-                val uri = dm.getUriForDownloadedFile(id) ?: return
-                startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
-                    .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+        // confere o download a cada segundo (mais confiável que esperar o aviso do sistema)
+        var tentativas = 0
+        val conferir = object : Runnable {
+            override fun run() {
+                val c = dm.query(android.app.DownloadManager.Query().setFilterById(id))
+                val status = if (c.moveToFirst()) c.getInt(c.getColumnIndexOrThrow(android.app.DownloadManager.COLUMN_STATUS)) else -1
+                c.close()
+                when {
+                    status == android.app.DownloadManager.STATUS_SUCCESSFUL -> {
+                        val uri = dm.getUriForDownloadedFile(id)
+                        if (uri != null) startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
+                            .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                        web.evaluateJavascript("window.fimAtualizacao && fimAtualizacao(true)", null)
+                    }
+                    status == android.app.DownloadManager.STATUS_FAILED || ++tentativas > 120 -> {
+                        // não deu: abre o link no navegador (lá dá pra baixar e instalar na mão)
+                        dm.remove(id)
+                        try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) } catch (_: Exception) {}
+                        web.evaluateJavascript("window.fimAtualizacao && fimAtualizacao(false)", null)
+                    }
+                    else -> mao.postDelayed(this, 1000)
+                }
             }
         }
-        val filtro = android.content.IntentFilter(android.app.DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-        if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(receptor, filtro, android.content.Context.RECEIVER_EXPORTED) else registerReceiver(receptor, filtro)
+        mao.postDelayed(conferir, 1000)
     }
 
     @Suppress("DEPRECATION")
@@ -132,7 +149,11 @@ class MainActivity : Activity() {
     }
 
     override fun onWindowFocusChanged(foco: Boolean) { super.onWindowFocusChanged(foco); if (foco) telaCheia() }
-    override fun onResume() { super.onResume(); manterAcesa(); web.onResume() }
+    override fun onResume() {
+        super.onResume(); manterAcesa(); web.onResume()
+        // voltou da tela de permissão: segue com a atualização
+        apkPendente?.let { if (android.os.Build.VERSION.SDK_INT < 26 || packageManager.canRequestPackageInstalls()) baixarEInstalar(it) }
+    }
 
     // tela sempre acesa com o app aberto: não apaga, não escurece e aparece por cima da tela de bloqueio
     @Suppress("DEPRECATION")
