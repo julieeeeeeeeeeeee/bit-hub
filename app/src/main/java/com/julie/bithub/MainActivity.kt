@@ -84,6 +84,36 @@ class MainActivity : Activity() {
             prefs.edit().putString("url", url.trim().ifEmpty { enderecoPadrao }).apply()
             mao.post { web.loadUrl(endereco) }
         }
+        // versão do app instalado (o hub compara com a última do GitHub)
+        @JavascriptInterface fun versao(): Int = packageManager.getPackageInfo(packageName, 0).let { if (android.os.Build.VERSION.SDK_INT >= 28) it.longVersionCode.toInt() else @Suppress("DEPRECATION") it.versionCode }
+        @JavascriptInterface fun recarregar() { mao.post { web.loadUrl(endereco) } }
+        @JavascriptInterface fun instalar(url: String) { mao.post { baixarEInstalar(url) } }
+    }
+
+    // atualizar pelo próprio app: baixa o APK novo do GitHub e abre o instalador do Android
+    private fun baixarEInstalar(url: String) {
+        if (android.os.Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+            // primeira vez: o Android pede pra liberar "instalar apps desta fonte"
+            startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, android.net.Uri.parse("package:$packageName")))
+            return
+        }
+        val dm = getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager
+        java.io.File(getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), "bit-hub.apk").delete()
+        val id = dm.enqueue(android.app.DownloadManager.Request(android.net.Uri.parse(url))
+            .setTitle("BIT · atualização")
+            .setMimeType("application/vnd.android.package-archive")
+            .setDestinationInExternalFilesDir(this, android.os.Environment.DIRECTORY_DOWNLOADS, "bit-hub.apk"))
+        val receptor = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: android.content.Context, i: android.content.Intent) {
+                if (i.getLongExtra(android.app.DownloadManager.EXTRA_DOWNLOAD_ID, -1) != id) return
+                unregisterReceiver(this)
+                val uri = dm.getUriForDownloadedFile(id) ?: return
+                startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
+                    .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+        }
+        val filtro = android.content.IntentFilter(android.app.DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+        if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(receptor, filtro, android.content.Context.RECEIVER_EXPORTED) else registerReceiver(receptor, filtro)
     }
 
     @Suppress("DEPRECATION")
