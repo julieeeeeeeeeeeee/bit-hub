@@ -30,6 +30,8 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         manterAcesa()
+        // deixa o PC pareado por depuração (adb) inspecionar a página do hub; sem depuração ligada no tablet, ninguém acessa
+        WebView.setWebContentsDebuggingEnabled(true)
         web = WebView(this)
         web.setBackgroundColor(Color.parseColor("#0b0c10"))
         setContentView(web)
